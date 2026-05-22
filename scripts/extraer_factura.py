@@ -1,10 +1,12 @@
+import re
 import sys
+import unicodedata
 
 import pdfplumber
 import xlwt
 
-from db import find_provider_id, get_connection, get_internal_product_code
-from proveedores import coca_cola
+from db import ensure_provider_id, get_connection, get_internal_product_code
+from proveedores import coca_cola, degregorio
 
 
 COLUMNAS = [
@@ -22,6 +24,25 @@ COLUMNAS = [
 
 PARSERS = [
     coca_cola,
+    degregorio,
+]
+
+DEGREGORIO_DETECCION_NORMALIZADA = [
+    "DEGREGORIO",
+    "TRANSPORTES Y DISTRIBUCIONES DEGREGORIO",
+]
+
+DEGREGORIO_DETECCION_COMPACTA = [
+    "DEGREGORIO",
+    "TRANSPORTESYDISTRIBUCIONESDEGREGORIO",
+    "30701435758",
+    "CUIT30701435758",
+    "DEGREG",
+]
+
+DEGREGORIO_CABECERAS_COMPACTAS = [
+    "CODIGODETALLEBULTOSUNIDSPUNITBONIFIMPORTE",
+    "BULTOSUNIDSPUNITBONIFIMPORTE",
 ]
 
 
@@ -38,8 +59,55 @@ def extraer_texto_pdf(pdf_path):
     return texto
 
 
+def normalizar_texto(texto):
+    texto = texto or ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(char for char in texto if not unicodedata.combining(char))
+    texto = texto.upper()
+    texto = texto.replace("\n", " ")
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
+
+
+def solo_alfanumerico(texto):
+    return re.sub(r"[^A-Z0-9]", "", (texto or "").upper())
+
+
+def es_degregorio(texto, texto_normalizado, texto_compacto):
+    if any(
+        clave in texto_normalizado for clave in DEGREGORIO_DETECCION_NORMALIZADA
+    ) or any(clave in texto_compacto for clave in DEGREGORIO_DETECCION_COMPACTA):
+        return True
+
+    tiene_cabecera_degregorio = any(
+        cabecera in texto_compacto for cabecera in DEGREGORIO_CABECERAS_COMPACTAS
+    )
+
+    if not tiene_cabecera_degregorio:
+        return False
+
+    return any(
+        producto.get("codigo_proveedor")
+        for producto in degregorio.extraer_productos(texto)
+    )
+
+
 def detectar_proveedor(texto):
+    texto_normalizado = normalizar_texto(texto)
+    texto_compacto = solo_alfanumerico(texto_normalizado)
+
     for parser in PARSERS:
+        if parser is degregorio:
+            if es_degregorio(
+                texto,
+                texto_normalizado,
+                texto_compacto,
+            ) or parser.es_proveedor(
+                texto
+            ):
+                return degregorio
+            continue
+
         if parser.es_proveedor(texto):
             return parser
 
@@ -48,17 +116,16 @@ def detectar_proveedor(texto):
 
 def aplicar_mapeos(productos, proveedor, db_path):
     with get_connection(db_path) as conn:
-        provider_id = find_provider_id(conn, proveedor)
+        provider_id = ensure_provider_id(conn, proveedor)
 
         for producto in productos:
             codigo_interno = None
 
-            if provider_id is not None:
-                codigo_interno = get_internal_product_code(
-                    conn,
-                    provider_id,
-                    producto["codigo_proveedor"],
-                )
+            codigo_interno = get_internal_product_code(
+                conn,
+                provider_id,
+                producto["codigo_proveedor"],
+            )
 
             producto["codigo_interno"] = codigo_interno or "SIN_MAPEO"
 
@@ -96,6 +163,17 @@ def main():
         parser = detectar_proveedor(texto)
 
         if parser is None:
+            texto_normalizado = normalizar_texto(texto)
+            texto_compacto = solo_alfanumerico(texto_normalizado)
+            print(
+                f"DEBUG proveedor no detectado. Texto extraido: {texto[:1500]}",
+                file=sys.stderr,
+            )
+            print(
+                f"DEBUG normalizado: {texto_normalizado[:1500]}",
+                file=sys.stderr,
+            )
+            print(f"DEBUG compacto: {texto_compacto[:1500]}", file=sys.stderr)
             print(
                 "No se detecto proveedor para la factura. "
                 "Agregue un parser especifico o revise el PDF.",

@@ -117,7 +117,21 @@ Los parsers viven en:
 scripts/proveedores/
 ```
 
-Por ahora esta implementado `coca_cola.py`. Para agregar proveedores como Quilmes o Arcor, crear un nuevo modulo en esa carpeta, implementar `es_proveedor(texto)` y `extraer_productos(texto)`, y registrarlo en `scripts/extraer_factura.py`.
+Estan implementados `coca_cola.py` y `degregorio.py`. Para agregar proveedores como Quilmes o Arcor, crear un nuevo modulo en esa carpeta, implementar `es_proveedor(texto)` y `extraer_productos(texto)`, y registrarlo en `scripts/extraer_factura.py`.
+
+### Prueba manual DEGREGORIO
+
+El parser `scripts/proveedores/degregorio.py` detecta facturas de DEGREGORIO por nombre, razon social o CUIT `30701435758`. Para probarlo:
+
+- subir una factura DEGREGORIO desde el frontend;
+- confirmar que se descarga un `.xls` real;
+- abrir el Excel y confirmar que la fila 1 y la fila 2 estan vacias;
+- confirmar que la fila 3 tiene los encabezados;
+- confirmar que los productos empiezan en la fila 4;
+- confirmar que se extraen productos como `012668 MELBA 36 X 120 GR`, `033600 ALF. MINI SHOT X 6 (114 GRS)` y `071240 HALLS XTRA STRONG 30X12X24.75 G (NU`;
+- confirmar que `codigo_interno` sale de `product_mappings` cuando existe mapeo, o queda exactamente como `SIN_MAPEO`.
+
+DEGREGORIO usa importes con punto decimal, por ejemplo `1003.66`, `28.83` y `7143.03`. La columna `cantidad` toma el entero anterior a `P.UNIT.`, que corresponde a `UNIDS.` cuando esta presente o a `BULTOS` cuando `UNIDS.` viene vacia.
 
 ## Base de datos
 
