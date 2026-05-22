@@ -1,24 +1,28 @@
 import sys
-import re
+
 import pdfplumber
-import pandas as pd
+import xlwt
+
+from db import find_provider_id, get_connection, get_internal_product_code
+from proveedores import coca_cola
 
 
-def normalizar_numero(valor):
-    """
-    Convierte números argentinos tipo 21,00 o 386688,87 a float.
-    """
-    if valor is None:
-        return None
+COLUMNAS = [
+    "codigo_interno",
+    "codigo_proveedor",
+    "detalle",
+    "cantidad",
+    "precio_unitario",
+    "descuento",
+    "total_neto",
+    "i_internos",
+    "iva",
+    "total",
+]
 
-    valor = str(valor).strip()
-    valor = valor.replace(".", "")
-    valor = valor.replace(",", ".")
-
-    try:
-        return float(valor)
-    except ValueError:
-        return valor
+PARSERS = [
+    coca_cola,
+]
 
 
 def extraer_texto_pdf(pdf_path):
@@ -34,90 +38,89 @@ def extraer_texto_pdf(pdf_path):
     return texto
 
 
-def extraer_productos_generico(texto):
-    productos = []
+def detectar_proveedor(texto):
+    for parser in PARSERS:
+        if parser.es_proveedor(texto):
+            return parser
 
-    lineas = texto.splitlines()
+    return None
 
-    for linea in lineas:
-        linea = linea.strip()
 
-        # Detecta líneas que comienzan con código de producto de 6 dígitos.
-        # Ejemplo:
-        # 100412 COCA COLA PET 2500X6 RED 21,00 21974,63 ...
-        if not re.match(r"^\d{6}\s+", linea):
-            continue
+def aplicar_mapeos(productos, proveedor, db_path):
+    with get_connection(db_path) as conn:
+        provider_id = find_provider_id(conn, proveedor)
 
-        partes = linea.split()
+        for producto in productos:
+            codigo_interno = None
 
-        if len(partes) < 9:
-            continue
+            if provider_id is not None:
+                codigo_interno = get_internal_product_code(
+                    conn,
+                    provider_id,
+                    producto["codigo_proveedor"],
+                )
 
-        codigo = partes[0]
-
-        # Últimas 7 columnas numéricas:
-        # cantidad, precio unitario, descuento, total neto, internos, iva, total
-        valores = partes[-7:]
-        detalle = " ".join(partes[1:-7])
-
-        producto = {
-            "codigo": codigo,
-            "detalle": detalle,
-            "cantidad": normalizar_numero(valores[0]),
-            "precio_unitario": normalizar_numero(valores[1]),
-            "descuento": normalizar_numero(valores[2]),
-            "total_neto": normalizar_numero(valores[3]),
-            "i_internos": normalizar_numero(valores[4]),
-            "iva": normalizar_numero(valores[5]),
-            "total": normalizar_numero(valores[6]),
-        }
-
-        productos.append(producto)
+            producto["codigo_interno"] = codigo_interno or "SIN_MAPEO"
 
     return productos
 
 
-def generar_excel(productos, output_path):
-    df = pd.DataFrame(productos)
+def generar_excel_xls(productos, output_path):
+    workbook = xlwt.Workbook(encoding="utf-8")
+    sheet = workbook.add_sheet("Productos")
 
-    columnas = [
-        "codigo",
-        "detalle",
-        "cantidad",
-        "precio_unitario",
-        "descuento",
-        "total_neto",
-        "i_internos",
-        "iva",
-        "total",
-    ]
+    for col_idx, columna in enumerate(COLUMNAS):
+        sheet.write(2, col_idx, columna)
 
-    if df.empty:
-        df = pd.DataFrame(columns=columnas)
-    else:
-        df = df[columnas]
+    for row_idx, producto in enumerate(productos, start=3):
+        for col_idx, columna in enumerate(COLUMNAS):
+            sheet.write(row_idx, col_idx, producto.get(columna, ""))
 
-    df.to_excel(output_path, index=False)
+    workbook.save(output_path)
 
 
 def main():
     if len(sys.argv) < 3:
-        print("Uso: python extraer_factura.py archivo.pdf salida.xlsx", file=sys.stderr)
+        print(
+            "Uso: python extraer_factura.py archivo.pdf salida.xls [database.sqlite]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     pdf_path = sys.argv[1]
     output_path = sys.argv[2]
+    db_path = sys.argv[3] if len(sys.argv) >= 4 else None
 
-    texto = extraer_texto_pdf(pdf_path)
-    productos = extraer_productos_generico(texto)
+    try:
+        texto = extraer_texto_pdf(pdf_path)
+        parser = detectar_proveedor(texto)
 
-    if not productos:
-        print("No se encontraron productos en la factura", file=sys.stderr)
+        if parser is None:
+            print(
+                "No se detecto proveedor para la factura. "
+                "Agregue un parser especifico o revise el PDF.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        productos = parser.extraer_productos(texto)
+
+        if not productos:
+            print("No se detectaron productos en la factura", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            productos = aplicar_mapeos(productos, parser.PROVEEDOR, db_path)
+        except Exception as db_error:
+            print(f"Error de base de datos: {db_error}", file=sys.stderr)
+            sys.exit(1)
+
+        generar_excel_xls(productos, output_path)
+
+        print(f"Archivo XLS generado correctamente: {output_path}")
+    except Exception as error:
+        print(f"Error procesando la factura: {error}", file=sys.stderr)
         sys.exit(1)
-
-    generar_excel(productos, output_path)
-
-    print(f"Excel generado correctamente: {output_path}")
 
 
 if __name__ == "__main__":

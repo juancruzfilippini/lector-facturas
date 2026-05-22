@@ -2,6 +2,7 @@ node_modules/
 .venv/
 uploads/*
 outputs/*
+database/*.sqlite
 __pycache__/
 *.pyc
 .env

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lector de facturas</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">PDF a XLS</p>
+        <h1>Lector de facturas</h1>
+      </div>
+      <span class="status-pill">Coca Cola</span>
+    </header>
+
+    <main class="layout">
+      <section class="panel upload-panel">
+        <div class="section-heading">
+          <h2>Procesar factura</h2>
+          <p id="invoice-status" class="status-text" aria-live="polite"></p>
+        </div>
+
+        <form id="invoice-form" class="inline-form">
+          <label class="file-control">
+            <span>Factura PDF</span>
+            <input id="invoice-file" name="factura" type="file" accept="application/pdf" required>
+          </label>
+          <button type="submit">Procesar factura</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h2>Proveedores</h2>
+          <p id="provider-status" class="status-text" aria-live="polite"></p>
+        </div>
+
+        <form id="provider-form" class="grid-form">
+          <label>
+            <span>Nombre</span>
+            <input id="provider-name" name="name" type="text" required>
+          </label>
+          <label>
+            <span>CUIT</span>
+            <input id="provider-cuit" name="cuit" type="text">
+          </label>
+          <button type="submit">Guardar proveedor</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>CUIT</th>
+              </tr>
+            </thead>
+            <tbody id="providers-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h2>Mapeos</h2>
+          <p id="mapping-status" class="status-text" aria-live="polite"></p>
+        </div>
+
+        <form id="mapping-form" class="grid-form mapping-form">
+          <label>
+            <span>Proveedor</span>
+            <select id="mapping-provider" name="provider_id" required></select>
+          </label>
+          <label>
+            <span>Codigo proveedor</span>
+            <input id="provider-product-code" name="provider_product_code" type="text" required>
+          </label>
+          <label>
+            <span>Descripcion</span>
+            <input id="provider-product-description" name="provider_product_description" type="text">
+          </label>
+          <label>
+            <span>Codigo interno</span>
+            <input id="internal-product-code" name="internal_product_code" type="text" required>
+          </label>
+          <button type="submit">Guardar mapeo</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th>Codigo proveedor</th>
+                <th>Descripcion</th>
+                <th>Codigo interno</th>
+              </tr>
+            </thead>
+            <tbody id="mappings-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
