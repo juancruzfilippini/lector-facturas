@@ -46,6 +46,13 @@ LINEA_PRODUCTO_RE = re.compile(
 )
 
 
+def normalizar_saltos_linea(texto):
+    texto = str(texto or "")
+    texto = re.sub(r"\(cid:\s*13\)\s*\(cid:\s*10\)", "\n", texto, flags=re.I)
+    texto = re.sub(r"\(cid:\s*(?:13|10)\)", "\n", texto, flags=re.I)
+    return texto
+
+
 def normalizar_numero_decimal(valor):
     if valor is None:
         return None
@@ -87,7 +94,7 @@ def es_linea_producto(linea):
 def extraer_productos(texto):
     productos = []
 
-    for linea in texto.splitlines():
+    for linea in normalizar_saltos_linea(texto).splitlines():
         linea = linea.strip()
 
         if not linea or debe_ignorar_linea(linea):

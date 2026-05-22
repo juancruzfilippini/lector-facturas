@@ -1,4 +1,6 @@
+import re
 import sys
+import unicodedata
 
 import pdfplumber
 import xlwt
@@ -25,6 +27,24 @@ PARSERS = [
     degregorio,
 ]
 
+DEGREGORIO_DETECCION_NORMALIZADA = [
+    "DEGREGORIO",
+    "TRANSPORTES Y DISTRIBUCIONES DEGREGORIO",
+]
+
+DEGREGORIO_DETECCION_COMPACTA = [
+    "DEGREGORIO",
+    "TRANSPORTESYDISTRIBUCIONESDEGREGORIO",
+    "30701435758",
+    "CUIT30701435758",
+    "DEGREG",
+]
+
+DEGREGORIO_CABECERAS_COMPACTAS = [
+    "CODIGODETALLEBULTOSUNIDSPUNITBONIFIMPORTE",
+    "BULTOSUNIDSPUNITBONIFIMPORTE",
+]
+
 
 def extraer_texto_pdf(pdf_path):
     texto = ""
@@ -39,8 +59,55 @@ def extraer_texto_pdf(pdf_path):
     return texto
 
 
+def normalizar_texto(texto):
+    texto = texto or ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(char for char in texto if not unicodedata.combining(char))
+    texto = texto.upper()
+    texto = texto.replace("\n", " ")
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto
+
+
+def solo_alfanumerico(texto):
+    return re.sub(r"[^A-Z0-9]", "", (texto or "").upper())
+
+
+def es_degregorio(texto, texto_normalizado, texto_compacto):
+    if any(
+        clave in texto_normalizado for clave in DEGREGORIO_DETECCION_NORMALIZADA
+    ) or any(clave in texto_compacto for clave in DEGREGORIO_DETECCION_COMPACTA):
+        return True
+
+    tiene_cabecera_degregorio = any(
+        cabecera in texto_compacto for cabecera in DEGREGORIO_CABECERAS_COMPACTAS
+    )
+
+    if not tiene_cabecera_degregorio:
+        return False
+
+    return any(
+        producto.get("codigo_proveedor")
+        for producto in degregorio.extraer_productos(texto)
+    )
+
+
 def detectar_proveedor(texto):
+    texto_normalizado = normalizar_texto(texto)
+    texto_compacto = solo_alfanumerico(texto_normalizado)
+
     for parser in PARSERS:
+        if parser is degregorio:
+            if es_degregorio(
+                texto,
+                texto_normalizado,
+                texto_compacto,
+            ) or parser.es_proveedor(
+                texto
+            ):
+                return degregorio
+            continue
+
         if parser.es_proveedor(texto):
             return parser
 
@@ -96,6 +163,17 @@ def main():
         parser = detectar_proveedor(texto)
 
         if parser is None:
+            texto_normalizado = normalizar_texto(texto)
+            texto_compacto = solo_alfanumerico(texto_normalizado)
+            print(
+                f"DEBUG proveedor no detectado. Texto extraido: {texto[:1500]}",
+                file=sys.stderr,
+            )
+            print(
+                f"DEBUG normalizado: {texto_normalizado[:1500]}",
+                file=sys.stderr,
+            )
+            print(f"DEBUG compacto: {texto_compacto[:1500]}", file=sys.stderr)
             print(
                 "No se detecto proveedor para la factura. "
                 "Agregue un parser especifico o revise el PDF.",
