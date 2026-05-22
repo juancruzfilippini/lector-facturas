@@ -260,6 +260,20 @@ def find_provider_id(conn, proveedor):
     return None
 
 
+def ensure_provider_id(conn, proveedor):
+    provider_id = find_provider_id(conn, proveedor)
+
+    if provider_id is not None:
+        return provider_id
+
+    provider = create_provider(
+        conn,
+        proveedor.get("name") or proveedor.get("key") or "Proveedor",
+        proveedor.get("cuit"),
+    )
+    return provider["id"]
+
+
 def get_internal_product_code(conn, provider_id, provider_product_code):
     row = conn.execute(
         """

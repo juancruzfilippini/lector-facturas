@@ -3,8 +3,8 @@ import sys
 import pdfplumber
 import xlwt
 
-from db import find_provider_id, get_connection, get_internal_product_code
-from proveedores import coca_cola
+from db import ensure_provider_id, get_connection, get_internal_product_code
+from proveedores import coca_cola, degregorio
 
 
 COLUMNAS = [
@@ -22,6 +22,7 @@ COLUMNAS = [
 
 PARSERS = [
     coca_cola,
+    degregorio,
 ]
 
 
@@ -48,17 +49,16 @@ def detectar_proveedor(texto):
 
 def aplicar_mapeos(productos, proveedor, db_path):
     with get_connection(db_path) as conn:
-        provider_id = find_provider_id(conn, proveedor)
+        provider_id = ensure_provider_id(conn, proveedor)
 
         for producto in productos:
             codigo_interno = None
 
-            if provider_id is not None:
-                codigo_interno = get_internal_product_code(
-                    conn,
-                    provider_id,
-                    producto["codigo_proveedor"],
-                )
+            codigo_interno = get_internal_product_code(
+                conn,
+                provider_id,
+                producto["codigo_proveedor"],
+            )
 
             producto["codigo_interno"] = codigo_interno or "SIN_MAPEO"
 
